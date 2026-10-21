@@ -1,11 +1,13 @@
 import { clock, day, duration, escape, hours, html, hue, initials, longDate, pace, percent, raw, when } from "./lib/format.mjs";
 import { achievements, bookProgress, daily, dayKey, leaderboard, minutesPerPage, records, startOfMonth, startOfWeek, streaks, totals, weekly } from "./lib/stats.mjs";
 import { createLocalBackend } from "./lib/backend-local.mjs";
+import { compareImport, exportFiles, planImport, readExport, summarize } from "./lib/kindle-export.mjs";
 
 const app = document.getElementById("app");
 const toastBox = document.getElementById("toast");
 const TIMER_KEY = "lasa-timer";
-const ui = { editing: null, feedLimit: 20, scope: null, access: null, stale: false };
+const ui = { editing: null, feedLimit: 20, scope: null, access: null, stale: false, import: { stage: "idle", private: true } };
+const EXPORT_PAGE = "https://www.amazon.com/hz/privacy-central/data-requests/preview.html";
 let backend = null;
 let session = { status: "loading" };
 let data = null;
@@ -267,7 +269,7 @@ function feedView() {
       <section class="card pad stack">
         <div class="card-title" style="padding:0"><h2>This week</h2><small>${hours(week.seconds)} · ${week.pages} pages</small></div>
         <div class="week-dots">${dots.map((dot) => html`<span class="${readDays.has(dot.key) ? "on" : ""} ${dot.today ? "today" : ""}" title="${dot.key}">${dot.letter}</span>`)}</div>
-        ${latest ? html`<small>Latest: <a href="#/a/${ref(latest)}">${latest.name}</a>, ${when(latest.start)}</small>` : html`<small>Nothing yet. Read in Kindle or Apple Books and press Sync, or press Record.</small>`}
+        ${latest ? html`<small>Latest: <a href="#/a/${ref(latest)}">${latest.name}</a>, ${when(latest.start)}</small>` : html`<small>Nothing yet. <a class="inline" href="#/import">Import your Kindle history</a>, or press Record.</small>`}
       </section>
     </aside>
     <section class="feed">
@@ -652,8 +654,13 @@ function settingsView() {
       </form>
     </section>
     <section class="card pad stack">
-      <h2>Kindle and Apple Books</h2>
-      <p>Sessions come from a small program on your Mac that reads Kindle for Mac and Apple Books progress. In a copy of the Läsa repository, run:</p>
+      <h2>Kindle history</h2>
+      <p>Amazon keeps every Kindle reading session, from any Kindle, phone, tablet or computer. Ask Amazon for your Kindle data, then drop the zip it sends you into Läsa. It works in this browser on any computer, with nothing to install.</p>
+      <div class="actions"><a class="button" href="#/import">Import Kindle history</a></div>
+    </section>
+    <section class="card pad stack">
+      <h2>Kindle for Mac and Apple Books</h2>
+      <p>To keep sessions coming as you read, a small program on your Mac reads Kindle for Mac and Apple Books progress. In a copy of the Läsa repository, run:</p>
       <pre class="code">node bin/lasa.mjs login
 node bin/lasa.mjs sync</pre>
       <p class="muted">Login opens this site to connect the Mac to @${viewer}. The first sync records where every book stands, and reading after that becomes sessions.</p>
@@ -673,6 +680,126 @@ function connectView(query) {
     <p class="muted">Only connect a Mac you are using right now.</p>
     <div class="actions"><button data-action="connect" data-port="${port}" data-state="${state}">Connect</button><a class="button ghost" href="#/">Cancel</a></div>
   </section>`;
+}
+
+function importSteps() {
+  return html`<section class="card pad stack">
+    <h2>Getting the zip from Amazon</h2>
+    <ol class="steps">
+      <li>Open Amazon's <a class="inline" href="${EXPORT_PAGE}" target="_blank" rel="noopener">Request Your Information</a> page and sign in. Outside the US, use the same page on your own Amazon site.</li>
+      <li>Choose <b>Kindle</b> in the list of data and submit the request, then confirm it from the email Amazon sends.</li>
+      <li>Amazon emails a download link when the data is ready, which takes anywhere from a few days to a few weeks. Download the zip and drop it above as it is, without unzipping.</li>
+    </ol>
+    <p class="muted">The zip holds a record of every reading session: when it started and ended, how long you read and how many pages you turned. Läsa reads the zip in this browser and saves only the sessions and book titles, never the file. Sessions read within 15 minutes of each other join into one, and anything under two minutes is left out. Importing a newer export later adds only what is new.</p>
+  </section>`;
+}
+
+function importPreview(state) {
+  const { plan } = state;
+  const sum = summarize(plan.activities);
+  const { added, updated, unchanged } = compareImport(plan.activities, activitiesOf(viewer));
+  const count = added.length + updated.length;
+  const changes = [
+    added.length ? `${added.length.toLocaleString()} new` : "",
+    updated.length ? `${updated.length.toLocaleString()} longer than the copy already here` : "",
+    unchanged ? `${unchanged.toLocaleString()} already in Läsa` : "",
+  ].filter(Boolean).join(", ");
+  if (!sum.sessions) {
+    return html`<section class="card pad stack"><h2>No sessions to import</h2><p class="muted">${state.names.join(", ")} has ${plan.records.toLocaleString()} reading records, but none add up to two minutes of reading.</p><div class="actions"><button class="ghost" data-action="import-reset">Choose another file</button></div></section>`;
+  }
+  const untitled = plan.books.filter((entry) => entry.title.startsWith("Kindle book ")).length;
+  const [first, last] = [new Date(sum.from).getFullYear(), new Date(sum.to).getFullYear()];
+  return html`<section class="card stack import-preview">
+    <div class="card-title"><h2>Ready to import</h2><small>${state.names.join(", ")}</small></div>
+    <div class="tiles">
+      <div class="tile"><h4>Sessions</h4><b>${sum.sessions.toLocaleString()}</b><span>from ${plan.records.toLocaleString()} records</span></div>
+      <div class="tile"><h4>Books</h4><b>${sum.books.toLocaleString()}</b><span>${untitled ? `${untitled} without a title` : "all with titles"}</span></div>
+      <div class="tile"><h4>Time read</h4><b>${hours(sum.seconds)}</b><span>${duration(sum.seconds / sum.sessions)} a session</span></div>
+      <div class="tile"><h4>Dates</h4><b>${first === last ? first : `${first}–${last}`}</b><span>${day(sum.from)}, ${first} to ${day(sum.to)}, ${last}</span></div>
+    </div>
+    <div class="pad stack">
+      <details class="import-books"><summary>The ${plan.books.length.toLocaleString()} books</summary><div class="records">${plan.books.map((entry) => html`<div class="row"><span>${entry.title}</span><span class="muted">${duration(entry.seconds)} · ${entry.sessions} session${entry.sessions === 1 ? "" : "s"}</span></div>`)}</div></details>
+      ${count ? html`<p>${changes}.</p>` : ""}
+      ${count ? html`<label class="check"><input type="checkbox" data-change="import-private" ${state.private ? "checked" : ""}><span><b>Only me</b><small>New sessions stay private to you. Anyone signed in to Läsa can see sessions shared with everyone. You can change any session later with Edit.</small></span></label>` : ""}
+      <div class="actions">
+        ${count ? html`<button data-action="import-run" ${backend.importActivities ? "" : "disabled"}>Import ${count.toLocaleString()} session${count === 1 ? "" : "s"}</button>` : html`<p class="muted">Nothing new: every session in this export is already in Läsa.</p>`}
+        <button class="ghost" data-action="import-reset">Choose another file</button>
+      </div>
+      ${backend.importActivities ? "" : html`<small>The demo only previews an import. Sign in on the real site to save it.</small>`}
+    </div>
+  </section>`;
+}
+
+function importView() {
+  const state = ui.import;
+  let body;
+  if (state.stage === "reading") body = html`<section class="card pad"><p>Reading ${state.names.join(", ")}…</p></section>`;
+  else if (state.stage === "preview") body = importPreview(state);
+  else if (state.stage === "writing") body = html`<section class="card pad stack"><h2>Importing</h2><p class="import-progress">${state.progress || "Starting…"}</p><small>Keep this tab open until it finishes.</small></section>`;
+  else if (state.stage === "done") {
+    const { count, added, books } = state.result;
+    body = html`<section class="card pad stack"><h2>Imported</h2><p>${count.toLocaleString()} session${count === 1 ? "" : "s"} across ${books.toLocaleString()} book${books === 1 ? "" : "s"}.${added && state.private ? " The new ones are visible only to you." : ""}</p><div class="actions"><a class="button" href="#/r/${viewer}">See your profile</a><button class="ghost" data-action="import-reset">Import another file</button></div></section>`;
+  } else {
+    body = html`<label class="dropzone" data-drop>
+      <input type="file" accept=".zip,.csv,.json,application/zip" multiple data-change="import-files">
+      <b>Drop your Kindle data zip here</b>
+      <span class="muted">or click to choose it. Several zips at once are fine.</span>
+    </label>
+    ${state.stage === "error" ? html`<p class="import-error">${state.error}</p>` : ""}`;
+  }
+  return html`<div class="stack narrow">
+    <section class="card pad stack">
+      <h1>Import your Kindle history</h1>
+      <p class="muted">Amazon keeps a record of every session you have read on a Kindle, phone, tablet or computer. Drop the zip it sends you and Läsa adds those sessions to your profile, from any computer and with nothing to install.</p>
+    </section>
+    ${body}
+    ${["idle", "error"].includes(state.stage) ? importSteps() : ""}
+  </div>`;
+}
+
+async function readImport(list) {
+  const chosen = [...list];
+  if (!chosen.length) return;
+  ui.import = { stage: "reading", names: chosen.map((file) => file.name), private: ui.import.private };
+  route();
+  try {
+    const inputs = await Promise.all(chosen.map(async (file) => ({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) })));
+    const { unzipBytes } = inputs.some((input) => /\.zip$/i.test(input.name)) ? await import("./lib/unzip.mjs") : {};
+    const unzip = (bytes, keep) => unzipBytes(bytes, keep).catch((error) => {
+      throw new Error(`Couldn't open that zip (${error.message}). Download it again from Amazon's email and drop the new copy.`);
+    });
+    const parsed = readExport(await exportFiles(inputs, unzip));
+    if (!parsed.sessionFiles.length) throw new Error("No reading sessions in that file. Läsa looks for Kindle.Devices.ReadingSession.csv, which comes in the Kindle part of Amazon's data. Check that the request included Kindle, or drop the other zips from the same email.");
+    const known = new Map(data.books.filter((entry) => entry.sources?.kindle).map((entry) => [entry.sources.kindle, entry]));
+    ui.import = { ...ui.import, stage: "preview", plan: planImport(parsed, { reader: viewer, known }) };
+  } catch (error) {
+    ui.import = { ...ui.import, stage: "error", error: error.message };
+  }
+  route();
+}
+
+async function runImport() {
+  const state = ui.import;
+  const { added, updated } = compareImport(state.plan.activities, activitiesOf(viewer));
+  const visibility = state.private ? "private" : "everyone";
+  const activities = [...added.map((activity) => ({ ...activity, visibility })), ...updated];
+  const keys = new Set(activities.map((activity) => activity.book));
+  const books = state.plan.books.filter((entry) => keys.has(entry.key));
+  const show = (progress) => {
+    ui.import = { ...ui.import, progress };
+    const line = app.querySelector(".import-progress");
+    if (line) line.textContent = progress;
+  };
+  ui.import = { ...state, stage: "writing", progress: "" };
+  route();
+  try {
+    await backend.importActivities({ books, activities }, show);
+    ui.import = { ...ui.import, stage: "done", result: { count: activities.length, added: added.length, books: keys.size } };
+  } catch (error) {
+    ui.import = { ...ui.import, stage: "preview", plan: state.plan };
+    toast(`Import stopped: ${error.message}. Sessions saved so far stay, and importing again picks up the rest.`);
+  }
+  route();
 }
 
 function renderViewer() {
@@ -727,7 +854,8 @@ function route() {
         if (location.hash.startsWith("#/settings")) route();
       }).catch((error) => toast(error.message));
     }
-  } else if (parts[0] === "connect") view = connectView(query);
+  } else if (parts[0] === "import") view = importView();
+  else if (parts[0] === "connect") view = connectView(query);
   else view = notFound("No such page.");
   app.innerHTML = view.value;
   for (const link of document.querySelectorAll("nav a")) link.classList.toggle("active", link.dataset.nav === nav);
@@ -782,6 +910,11 @@ document.addEventListener("click", async (event) => {
     } else if (action === "connect") {
       const payload = encodeURIComponent(JSON.stringify({ refreshToken: backend.refreshToken(), uid: backend.uid(), handle: viewer, email: data.email, state: target.dataset.state }));
       location.href = `http://127.0.0.1:${target.dataset.port}/callback#${payload}`;
+    } else if (action === "import-run") {
+      await runImport();
+    } else if (action === "import-reset") {
+      ui.import = { stage: "idle", private: ui.import.private };
+      route();
     } else if (action.startsWith("timer-")) timerAction(action);
   } catch (error) {
     toast(error.message);
@@ -863,8 +996,22 @@ document.addEventListener("change", (event) => {
     route();
   } else if (kind === "manual-book") {
     for (const label of event.target.form.querySelectorAll(".manual-new")) label.hidden = event.target.value !== "__new";
+  } else if (kind === "import-files") {
+    readImport(event.target.files);
+  } else if (kind === "import-private") {
+    ui.import.private = event.target.checked;
   }
 });
+
+for (const type of ["dragenter", "dragover", "dragleave", "drop"]) {
+  document.addEventListener(type, (event) => {
+    if (!location.hash.startsWith("#/import") || !event.dataTransfer?.types.includes("Files")) return;
+    event.preventDefault();
+    const zone = app.querySelector("[data-drop]");
+    zone?.classList.toggle("over", type === "dragenter" || type === "dragover");
+    if (type === "drop" && zone && ["idle", "error"].includes(ui.import.stage)) readImport(event.dataTransfer.files);
+  });
+}
 
 document.addEventListener("input", (event) => {
   const kind = event.target.dataset.input;

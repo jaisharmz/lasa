@@ -369,6 +369,23 @@ pre.code { margin: 0; padding: 10px 12px; background: var(--bg); border: 1px sol
 .private { display: inline-flex; align-items: center; gap: 2px; }
 .private .icon { width: 13px; height: 13px; }
 #viewer a { display: inline-flex; }
+a.inline { color: var(--orange); }
+a.inline:hover { text-decoration: underline; }
+
+.dropzone { position: relative; display: grid; gap: 6px; justify-items: center; text-align: center; padding: 40px 20px; border: 2px dashed var(--line); border-radius: 8px; background: var(--card); color: var(--text); font-size: 15px; cursor: pointer; }
+.dropzone:hover, .dropzone.over { border-color: var(--orange); background: var(--orange-soft); }
+.dropzone:focus-within { outline: 2px solid var(--orange); outline-offset: 2px; }
+.dropzone input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.import-error { color: var(--orange); }
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.import-preview { gap: 0; }
+.import-preview .tiles { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-top: 12px; }
+.import-books summary { cursor: pointer; font-weight: 600; }
+.import-books .records { max-height: 320px; overflow-y: auto; margin-top: 6px; border: 1px solid var(--line); border-radius: 6px; }
+.import-books .records div.row { padding: 6px 12px; }
+.check { display: flex; gap: 10px; align-items: flex-start; color: var(--text); font-size: 15px; cursor: pointer; }
+.check input { width: 18px; height: 18px; margin: 2px 0 0; padding: 0; accent-color: var(--orange); flex: none; }
+.check span { display: grid; gap: 2px; }
 
 @media (max-width: 640px) {
   .hero-actions { margin-left: 0; }

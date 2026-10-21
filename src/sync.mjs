@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { readAppleBooks } from "./sources/apple-books.mjs";
 import { readKindleMac } from "./sources/kindle-mac.mjs";
-import { loadKindleExport, mergeSessions } from "./sources/kindle-export.mjs";
+import { exportActivity, loadKindleExport, mergeSessions } from "./sources/kindle-export.mjs";
 import { advance, estimateSeconds, sessionName } from "./sessions.mjs";
 import { ensureBook } from "./books.mjs";
 import { bookKey } from "../web/lib/books.mjs";
@@ -123,28 +123,7 @@ export async function importKindleExport({ sink, config = {}, input, tmpDir, dry
       book = dryRun ? { key: bookKey(title), title } : (await ensureBook(sink, item, { offline })).book;
       books.set(session.asin, book);
     }
-    const start = new Date(session.start).toISOString();
-    const activity = {
-      id: `kx-${session.asin.toLowerCase()}-${Math.floor(session.start / 1000)}`,
-      reader: sink.handle,
-      book: book.key,
-      name: sessionName(start),
-      start,
-      end: new Date(session.end).toISOString(),
-      seconds: Math.round(session.millis / 1000),
-      estimated: false,
-      pages: session.flips,
-      progressStart: null,
-      progressEnd: null,
-      finished: false,
-      source: "kindle-export",
-      device: session.device ? `Kindle · ${session.device}` : "Kindle",
-      format: "ebook",
-      note: "",
-      visibility: config.visibility || "everyone",
-      highlights: [],
-    };
-    written.push(activity);
+    written.push(exportActivity(session, book.key, { reader: sink.handle, visibility: config.visibility }));
   }
   if (!dryRun && written.length) await sink.saveActivities(written);
   log(`${written.length} activities across ${books.size} books${dryRun ? " (dry run, nothing written)" : ""}`);

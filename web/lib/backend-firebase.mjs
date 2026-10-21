@@ -101,16 +101,57 @@ export function createFirebaseBackend({ emulators = false, canSync = false } = {
     await setDoc(logRef(activity.start, visibility), { uid: user.uid, month: monthKey(activity.start), visibility, activities: { [activity.id]: { ...fields, reader: handleOf(user.uid), visibility } } }, { merge: true });
   }
 
+  async function createBook(item) {
+    const book = newBook(item, await lookupOpenLibrary(item));
+    try {
+      await setDoc(doc(db, "books", book.key), book);
+    } catch (error) {
+      if (error.code !== "permission-denied" || !(await getDoc(doc(db, "books", book.key))).exists()) throw error;
+    }
+    return book;
+  }
+
   async function ensureBook(input) {
     if (input.book && raw.books.has(input.book)) return raw.books.get(input.book);
     const title = String(input.title || "").trim();
     if (!title) throw new Error("pick a book or give a title");
     const key = bookKey(title);
     if (raw.books.has(key)) return raw.books.get(key);
-    const item = { source: "manual", sourceId: slug(title), title, author: input.author || null };
-    const book = newBook(item, await lookupOpenLibrary(item));
-    await setDoc(doc(db, "books", book.key), book);
-    return book;
+    return createBook({ source: "manual", sourceId: slug(title), title, author: input.author || null });
+  }
+
+  async function importActivities({ books, activities }, progress = () => {}) {
+    const missing = books.filter((entry) => !raw.books.has(entry.key));
+    const unsourced = books.filter((entry) => raw.books.has(entry.key) && !raw.books.get(entry.key).sources?.[entry.source]);
+    const queue = [...missing];
+    let looked = 0;
+    async function worker() {
+      for (let entry = queue.shift(); entry; entry = queue.shift()) {
+        await createBook({ source: entry.source, sourceId: entry.sourceId, title: entry.title, author: null });
+        progress(`Looking up books: ${++looked} of ${missing.length}`);
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(4, missing.length) }, worker));
+
+    const logs = new Map();
+    for (const { uid, ...activity } of activities) {
+      const visibility = activity.visibility === "private" ? "private" : "everyone";
+      const id = `${user.uid}_${monthKey(activity.start)}_${visibility}`;
+      if (!logs.has(id)) logs.set(id, { uid: user.uid, month: monthKey(activity.start), visibility, activities: {} });
+      logs.get(id).activities[activity.id] = { ...activity, reader: handleOf(user.uid), visibility };
+    }
+    const entries = [...logs];
+    for (let index = 0; index < entries.length; index += 40) {
+      const batch = writeBatch(db);
+      for (const [id, log] of entries.slice(index, index + 40)) batch.set(doc(db, "logs", id), log, { merge: true });
+      await batch.commit();
+      progress(`Saving sessions: ${Math.min(index + 40, entries.length)} of ${entries.length} months`);
+    }
+    for (let index = 0; index < unsourced.length; index += 400) {
+      const batch = writeBatch(db);
+      for (const entry of unsourced.slice(index, index + 400)) batch.update(doc(db, "books", entry.key), new FieldPath("sources", entry.source), entry.sourceId);
+      await batch.commit();
+    }
   }
 
   return {
@@ -190,6 +231,7 @@ export function createFirebaseBackend({ emulators = false, canSync = false } = {
       await saveActivity(activity);
       return activity;
     },
+    importActivities,
     async editActivity(ownerHandle, id, fields) {
       const activity = build().activities.find((entry) => entry.uid === user.uid && entry.id === id);
       if (!activity) throw new Error("only the reader can edit a session");
