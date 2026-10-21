@@ -8,7 +8,7 @@ The site is https://lasa-reading.web.app. It runs on Firebase: Google sign-in, F
 
 1. Open https://lasa-reading.web.app, sign in with Google, and pick a handle.
 2. To bring in your whole Kindle history, on any computer, ask Amazon for your Kindle data on its [Request Your Information](https://www.amazon.com/hz/privacy-central/data-requests/preview.html) page. When the email with the download link arrives, which takes a few days to a few weeks, open Settings > Import Kindle history and drop the zip there without unzipping it. Before anything is saved, the page shows how many sessions and books it found, the hours, and the dates they span. New sessions are private unless you untick "Only me".
-3. To keep Kindle for Mac and Apple Books syncing as you read, clone this repository on your Mac (Node 22.13 or newer, nothing to install) and run:
+3. To keep Kindle for Mac and Apple Books syncing as you read, use [Läsa for Mac](#läsa-for-mac), a menu-bar app that needs no terminal. The same sync also runs from a clone of this repository (Node 22.13 or newer, nothing to install):
 
 ```bash
 node bin/lasa.mjs login
@@ -37,7 +37,70 @@ node bin/lasa.mjs import ~/Downloads/Kindle.zip --dry-run
 node bin/lasa.mjs import ~/Downloads/Kindle.zip
 ```
 
-## Syncing in the background
+## Läsa for Mac
+
+A menu-bar app that syncs Kindle for Mac and Apple Books with no terminal. Inside it is the same sync engine as the CLI (`mac/helper.mjs`, built into one executable with Node's single-executable support) and a small Swift app around it.
+
+The first time it opens, a window walks through three steps:
+
+1. **Connect.** The site opens in your browser. Sign in and press Connect. The app keeps the sign-in in your login Keychain.
+2. **Allow access.** Kindle and Apple Books keep their data in folders macOS guards, so the first read makes macOS ask whether Läsa may access data from other apps. Choose Allow.
+3. **Record where your books stand.** The first sync notes how far you are in every book, so books you finished long ago don't fill your feed. Here you also choose whether new sessions are visible to everyone or only you.
+
+After that it syncs every 10 minutes, when the Mac wakes, and when it starts. The menu shows the last sync and what it found, each app's book count, Sync Now, Open Läsa, who sees new sessions, Open at Login, the sync log, and Disconnect.
+
+If macOS blocks access (the menu says "blocked by macOS"), open System Settings, then Privacy & Security, then Full Disk Access, and switch on Läsa. If Läsa isn't in the list, press + and choose it in Applications. Accept if macOS offers to quit and reopen Läsa, then press Check Again in the Läsa window.
+
+The app keeps its progress snapshots, `config.json` (the same keys as `.lasa/config.json` below) and `sync.log` in `~/Library/Application Support/Läsa`. Disconnect deletes the Keychain item. Don't run the app and `lasa agent` on the same Mac; the menu says so when it finds the agent.
+
+Builds carry an ad-hoc signature for now and no notarization. macOS refuses to open a downloaded copy the first time; after that attempt, System Settings > Privacy & Security shows an Open Anyway button. macOS also ties Full Disk Access and the Keychain item to the exact build, so after an update it may ask for your password once and need access granted again. A Developer ID signature (below) removes all three.
+
+### Build it
+
+```bash
+sh mac/build.sh
+open mac/build/Läsa.app
+```
+
+The build needs Swift (Xcode or the Command Line Tools) and Node. It downloads the official Node binary once into `~/Library/Caches/lasa-build` and checks it against nodejs.org's checksums, because Homebrew's node loads its libraries from `/opt/homebrew` and is built without single-executable support. It writes `mac/build/Läsa.app` and `mac/build/Lasa-<version>.dmg` (about 48 MB).
+
+To run the app against the emulators from the Develop section:
+
+```bash
+open --env LASA_EMULATORS=1 mac/build/Läsa.app
+```
+
+It then uses its own Keychain item and `~/Library/Application Support/Läsa/emulators`. `LASA_APPLE_BOOKS_DIR` and `LASA_KINDLE_DIR` point sync at other folders, such as test databases, which also keeps macOS from asking for access. `LASA_NO_OPEN=1` writes the connect link to the sync log instead of opening it.
+
+### Sign it for other people
+
+Signing that strangers' Macs trust takes an Apple Developer Program membership ($99 a year).
+
+1. Join the program with the Apple ID that will sign.
+2. Make a Developer ID Application certificate: in Keychain Access, choose Certificate Assistant > Request a Certificate From a Certificate Authority and save the request to disk. Upload it at developer.apple.com under Certificates > + > Developer ID Application, then download the certificate and double-click it. `security find-identity -v -p codesigning` should now list `Developer ID Application: Your Name (TEAMID)`.
+3. Make an app-specific password at account.apple.com (Sign-In and Security > App-Specific Passwords) and store it once:
+
+```bash
+xcrun notarytool store-credentials lasa-notary --apple-id you@example.com --team-id TEAMID
+```
+
+4. Build with the certificate. This adds the hardened runtime and secure timestamps, and gives the sync engine the two JIT entitlements in `mac/helper.entitlements` that V8 needs:
+
+```bash
+SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" sh mac/build.sh
+```
+
+5. Notarize and staple the disk image, then check it:
+
+```bash
+xcrun notarytool submit mac/build/Lasa-0.1.0.dmg --keychain-profile lasa-notary --wait
+xcrun stapler staple mac/build/Lasa-0.1.0.dmg
+spctl --assess --type open --context context:primary-signature -v mac/build/Lasa-0.1.0.dmg
+```
+
+`spctl` should answer "accepted, source=Notarized Developer ID". If notarization fails, `xcrun notarytool log <submission id> --keychain-profile lasa-notary` names the file it objected to. The stapled .dmg is what goes on a GitHub Release.
+
+## Syncing in the background from the terminal
 
 ```bash
 node bin/lasa.mjs agent install
@@ -52,7 +115,7 @@ node bin/lasa.mjs agent install
 - The Import page saves only sessions and book titles, and new sessions start as "Only me". Books are shared records, so a private import still adds its titles to the shared list of books, without saying who read them.
 - Nobody can write a session, kudos, comment, or follow as someone else.
 - `.lasa/config.json` on the Mac takes `"hide": ["word", ...]`. A book whose title contains any of those words never becomes a session, like Strava's privacy zones. `"visibility": "private"` makes synced sessions private by default, and highlights stay off until `"shareHighlights": true`.
-- The Mac stores its sign-in in `.lasa/credentials.json` (readable only by you). `lasa logout` removes it.
+- The CLI stores its sign-in in `.lasa/credentials.json` (readable only by you), and `lasa logout` removes it. Läsa for Mac keeps it in the login Keychain and hands it to the sync engine on standard input for each run.
 
 Admins switch between open sign-up and invite-only in Settings > Access, or from a connected Mac:
 
@@ -100,6 +163,10 @@ src/sessions.mjs    progress snapshots to sessions
 src/sync.mjs        sources and sessions, written through a sink
 src/sinks.mjs       where sessions go: Firestore, or a local folder for the demo and tests
 src/firebase.mjs    Firestore and token refresh over REST, with no SDK
+src/connect.mjs     the 127.0.0.1 page that takes the sign-in from the site, for the CLI and the app
+mac/helper.mjs      the sync engine as the app runs it: one JSON event per line, the account on stdin
+mac/Sources/        the Swift menu-bar app
+mac/build.sh        the single executable, the app bundle, signing, and the .dmg
 web/                the site, plain ES modules with no build step
 web/lib/            stats, formatting, the Kindle export reader the CLI shares, and the Firebase and demo backends
 firestore.rules     who can read and write what
@@ -116,3 +183,4 @@ test/               node --test
 - Apple Books highlights are wired up but untested, because the library this was built against has none.
 - The feed's Everyone tab loads every reader's public sessions, which is fine for a small community. Thousands of readers would need the feed to query only the people you follow.
 - There are no Windows or Linux sources yet.
+- Läsa for Mac is built for Apple silicon only, needs macOS 13 or newer, and has no automatic updates.

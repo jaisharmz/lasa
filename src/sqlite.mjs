@@ -12,8 +12,20 @@ export function openCopy(file, tmpDir) {
   return new DatabaseSync(copy);
 }
 
+// existsSync answers false when macOS refuses access to another app's container, which would read as "not
+// installed". This throws the refusal instead, so the caller can say what is actually wrong.
+export function present(file) {
+  try {
+    fs.statSync(file);
+    return true;
+  } catch (error) {
+    if (error.code === "ENOENT" || error.code === "ENOTDIR") return false;
+    throw error;
+  }
+}
+
 export function newestFile(dir, prefix, suffix = ".sqlite") {
-  if (!fs.existsSync(dir)) return null;
+  if (!present(dir)) return null;
   const files = fs.readdirSync(dir)
     .filter((name) => name.startsWith(prefix) && name.endsWith(suffix))
     .map((name) => path.join(dir, name))

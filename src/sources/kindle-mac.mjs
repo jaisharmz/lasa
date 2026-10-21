@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { openCopy } from "../sqlite.mjs";
+import { openCopy, present } from "../sqlite.mjs";
 
-export const KINDLE_DIR = path.join(os.homedir(), "Library/Containers/com.amazon.Lassen/Data/Library");
+export const KINDLE_DIR = process.env.LASA_KINDLE_DIR || path.join(os.homedir(), "Library/Containers/com.amazon.Lassen/Data/Library");
 
 function asinOf(bookId) {
   const match = /^A:([^-]+)-/.exec(bookId || "");
@@ -12,11 +12,11 @@ function asinOf(bookId) {
 
 function recentReads(libraryDir, tmpDir) {
   const ksdk = path.join(libraryDir, "KSDK");
-  if (!fs.existsSync(ksdk)) return new Map();
+  if (!present(ksdk)) return new Map();
   const reads = new Map();
   for (const account of fs.readdirSync(ksdk).filter((name) => name.startsWith("amzn1.account."))) {
     const file = path.join(ksdk, account, "ksdk_annotation_v1.db");
-    if (!fs.existsSync(file)) continue;
+    if (!present(file)) continue;
     const db = openCopy(file, path.join(tmpDir, "kindle", account));
     const rows = db.prepare(`
       select serialized_payload as payload, modified_time as modified
@@ -36,7 +36,7 @@ function recentReads(libraryDir, tmpDir) {
 
 export function readKindleMac({ tmpDir, libraryDir = KINDLE_DIR }) {
   const bookData = path.join(libraryDir, "Protected", "BookData.sqlite");
-  if (!fs.existsSync(bookData)) return { source: "kindle", available: false, items: [], highlights: [] };
+  if (!present(bookData)) return { source: "kindle", available: false, items: [], highlights: [] };
 
   const db = openCopy(bookData, path.join(tmpDir, "kindle"));
   const rows = db.prepare(`

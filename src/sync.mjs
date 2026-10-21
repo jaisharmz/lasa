@@ -18,15 +18,20 @@ function hidden(config, title) {
 
 export const SOURCES = [["apple-books", readAppleBooks], ["kindle", readKindleMac]];
 
-function readSources(config, tmpDir, list) {
+export function isDenied(error) {
+  return error?.code === "EPERM" || error?.code === "EACCES" || /authorization|permission|not permitted/i.test(error?.message || "");
+}
+
+// deniedHint is the fix in the words of whoever is running sync: node for the CLI, the app for Läsa for Mac.
+export function readSources({ config = {}, tmpDir, list = SOURCES, deniedHint = "grant Full Disk Access to node" }) {
   const results = [];
   for (const [source, read] of list) {
     if ((config.sources || {})[source] === false) continue;
     try {
       results.push(read({ tmpDir }));
     } catch (error) {
-      const denied = error.code === "EPERM" || error.code === "EACCES" || /authorization|permission/i.test(error.message);
-      results.push({ source, available: false, items: [], highlights: [], error: denied ? "permission denied (grant Full Disk Access to node)" : error.message });
+      const denied = isDenied(error);
+      results.push({ source, available: false, denied, items: [], highlights: [], error: denied ? `permission denied (${deniedHint})` : error.message });
     }
   }
   return results;
@@ -39,8 +44,8 @@ function readMinutesPerPage(mine) {
   return pages >= 50 ? seconds / 60 / pages : 1.6;
 }
 
-export async function sync({ sink, config = {}, statePath, tmpDir, dryRun = false, offline = false, now = new Date(), sources: list = SOURCES, log = console.log }) {
-  const sources = readSources(config, tmpDir, list);
+export async function sync({ sink, config = {}, statePath, tmpDir, dryRun = false, offline = false, now = new Date(), sources: list = SOURCES, deniedHint, log = console.log }) {
+  const sources = readSources({ config, tmpDir, list, deniedHint });
   for (const source of sources) {
     if (source.error) log(`${source.source}: ${source.error}`);
     else if (!source.available) log(`${source.source}: not found on this machine`);
@@ -96,7 +101,7 @@ export async function sync({ sink, config = {}, statePath, tmpDir, dryRun = fals
     fs.mkdirSync(path.dirname(statePath), { recursive: true });
     fs.writeFileSync(statePath, JSON.stringify({ ...state, syncedAt: now.toISOString() }, null, 2) + "\n");
   }
-  return { changes, written, baseline, sources: sources.map(({ source, available, items, error }) => ({ source, available, books: items.length, error })) };
+  return { changes, written, baseline, sources: sources.map(({ source, available, denied, items, error }) => ({ source, available, denied: Boolean(denied), books: items.length, error })) };
 }
 
 export async function importKindleExport({ sink, config = {}, input, tmpDir, dryRun = false, offline = false, log = console.log }) {

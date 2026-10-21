@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-import crypto from "node:crypto";
 import fs from "node:fs";
-import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
@@ -12,6 +10,7 @@ import { logActivity } from "../src/manual.mjs";
 import { serve } from "../src/server.mjs";
 import { buildDemo } from "../src/demo.mjs";
 import { FirebaseClient, endpoints } from "../src/firebase.mjs";
+import { connect } from "../src/connect.mjs";
 import { FirestoreSink } from "../src/sinks.mjs";
 import { readAppleBooks } from "../src/sources/apple-books.mjs";
 import { readKindleMac } from "../src/sources/kindle-mac.mjs";
@@ -93,62 +92,19 @@ function preview() {
   return { handle: "you", mine: async () => [], book: async () => null };
 }
 
-function callbackPage() {
-  return `<!doctype html><meta charset="utf-8"><title>Läsa</title>
-<body style="font:16px -apple-system,system-ui,sans-serif;display:grid;place-items:center;height:90vh;color:#242428">
-<p id="status">Connecting this Mac…</p>
-<script>
-const payload = location.hash.slice(1);
-history.replaceState(null, "", "/callback");
-fetch("/token", { method: "POST", headers: { "Content-Type": "application/json" }, body: decodeURIComponent(payload) })
-  .then((response) => response.json())
-  .then((result) => { document.getElementById("status").textContent = result.ok ? "This Mac is connected to @" + result.handle + ". You can close this tab." : "Couldn't connect: " + result.error; });
-</script>`;
-}
-
-function login() {
-  const state = crypto.randomBytes(16).toString("hex");
-  return new Promise((resolve, reject) => {
-    const server = http.createServer(async (request, response) => {
-      try {
-        if (request.method === "GET" && request.url.startsWith("/callback")) {
-          response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-          return response.end(callbackPage());
-        }
-        if (request.method === "POST" && request.url === "/token") {
-          let body = "";
-          for await (const chunk of request) body += chunk;
-          const payload = JSON.parse(body);
-          if (payload.state !== state) throw new Error("this login link is stale; run lasa login again");
-          const client = new FirebaseClient({ refreshToken: payload.refreshToken, ends });
-          await client.idToken();
-          if (client.cached.uid !== payload.uid) throw new Error("the account didn't match");
-          const saved = { uid: payload.uid, handle: payload.handle, email: payload.email, refreshToken: client.refreshToken, project: ends.projectId };
-          fs.mkdirSync(LOCAL, { recursive: true });
-          fs.writeFileSync(CREDENTIALS, JSON.stringify(saved, null, 2) + "\n", { mode: 0o600 });
-          response.writeHead(200, { "Content-Type": "application/json" });
-          response.end(JSON.stringify({ ok: true, handle: saved.handle }));
-          server.close();
-          return resolve(saved);
-        }
-        response.writeHead(404);
-        response.end();
-      } catch (error) {
-        response.writeHead(400, { "Content-Type": "application/json" });
-        response.end(JSON.stringify({ ok: false, error: error.message }));
-      }
-    });
-    server.listen(0, "127.0.0.1", () => {
-      const url = `${ends.app}/#/connect?port=${server.address().port}&state=${state}`;
+async function login() {
+  const saved = await connect({
+    ends,
+    again: "run lasa login again",
+    onUrl: (url) => {
       console.log(`opening ${url}`);
       console.log("sign in there and press Connect");
       if (!flags["no-open"]) spawn("open", [url], { stdio: "ignore", detached: true }).unref();
-    });
-    setTimeout(() => {
-      server.close();
-      reject(new Error("no answer from the browser in 10 minutes; run lasa login again"));
-    }, 600000).unref();
+    },
   });
+  fs.mkdirSync(LOCAL, { recursive: true });
+  fs.writeFileSync(CREDENTIALS, JSON.stringify(saved, null, 2) + "\n", { mode: 0o600 });
+  return saved;
 }
 
 async function changeAccess(change) {

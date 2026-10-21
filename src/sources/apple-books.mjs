@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import { newestFile, openCopy } from "../sqlite.mjs";
 
-export const APPLE_BOOKS_DIR = path.join(os.homedir(), "Library/Containers/com.apple.iBooksX/Data/Documents");
+export const APPLE_BOOKS_DIR = process.env.LASA_APPLE_BOOKS_DIR || path.join(os.homedir(), "Library/Containers/com.apple.iBooksX/Data/Documents");
 const CORE_DATA_EPOCH = 978307200;
 
 function fromCoreData(seconds) {
