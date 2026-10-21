@@ -1,0 +1,22 @@
+{
+  "name": "lasa",
+  "version": "0.1.0",
+  "description": "Strava for reading: sessions from Kindle and Apple Books in a shared feed with kudos, follows, streaks, and book leaderboards, on Firebase",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "lasa": "bin/lasa.mjs"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node bin/lasa.mjs serve",
+    "demo": "node bin/lasa.mjs demo",
+    "sync": "node bin/lasa.mjs sync",
+    "test": "node --test",
+    "emulators": "npx --yes firebase-tools@latest emulators:start --only auth,firestore --project demo-lasa",
+    "test:rules": "node scripts/check-rules.mjs",
+    "deploy": "node bin/lasa.mjs deploy"
+  }
+}

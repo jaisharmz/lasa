@@ -1,0 +1,5 @@
+start_timestamp,end_timestamp,ASIN,device_family,reading_marketplace,content_type,total_reading_millis,number_of_page_flips
+2026-10-01T21:00:00.000Z,2026-10-01T21:25:00.000Z,B073SG4L8T,Kindle E-reader,US,Ebook,1500000,20
+2026-10-01T21:30:00.000Z,2026-10-01T21:40:00.000Z,B073SG4L8T,Kindle E-reader,US,Ebook,600000,11
+2026-10-03T08:00:00.000Z,2026-10-03T08:01:00.000Z,B073SG4L8T,Kindle for iOS,US,Ebook,60000,1
+2026-10-02T22:00:00.000Z,2026-10-02T22:45:00.000Z,B00TEST123,Kindle for iOS,US,Ebook,2700000,40

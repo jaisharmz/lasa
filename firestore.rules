@@ -1,0 +1,93 @@
+rules_version = "2";
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // The owner's account id: always a member and an admin, so access can be set up from the site.
+    function owner() {
+      return request.auth != null && request.auth.uid in ["bHxdASzgYPTIfuLGIhRBsJIRHFp1"];
+    }
+
+    function accessPath() {
+      return /databases/$(database)/documents/config/access;
+    }
+
+    function access() {
+      return get(accessPath()).data;
+    }
+
+    function admin() {
+      return owner() || (request.auth != null && exists(accessPath()) && request.auth.token.email in access().admins);
+    }
+
+    // Sign-up is open to any verified Google account until an admin saves config/access in invite mode.
+    function member() {
+      return owner() || (request.auth != null && request.auth.token.email_verified == true
+        && (!exists(accessPath()) || access().mode == "open"
+          || request.auth.token.email in access().emails || request.auth.token.email in access().admins));
+    }
+
+    function me() {
+      return request.auth.uid;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    match /config/access {
+      allow read: if admin();
+      allow write: if admin() && incoming().mode in ["invite", "open"] && incoming().emails is list && incoming().admins is list;
+    }
+
+    match /handles/{handle} {
+      allow read: if member();
+      allow create: if member() && incoming().uid == me() && handle.matches("^[a-z0-9][a-z0-9-]{1,23}$");
+      allow delete: if member() && resource.data.uid == me();
+    }
+
+    match /users/{uid} {
+      allow read: if member();
+      allow create, update: if member() && uid == me() && incoming().uid == me()
+        && incoming().handle is string
+        && getAfter(/databases/$(database)/documents/handles/$(incoming().handle)).data.uid == me()
+        && incoming().name is string && incoming().name.size() <= 80
+        && (!("bio" in incoming()) || incoming().bio.size() <= 300);
+    }
+
+    match /books/{key} {
+      allow read: if member();
+      allow create: if member() && key.matches("^[a-z0-9-]{1,60}$") && incoming().key == key && incoming().title is string;
+      allow update: if member() && incoming().diff(resource.data).affectedKeys().hasOnly(["sources", "cover", "pages", "pagesEstimated", "author", "year", "openLibrary"]);
+    }
+
+    // One document per reader, month and visibility, holding that month's sessions as a map.
+    match /logs/{logId} {
+      allow read: if member() && (resource.data.visibility == "everyone" || resource.data.uid == me());
+      allow create, update: if member() && incoming().uid == me()
+        && incoming().visibility in ["everyone", "private"]
+        && logId == me() + "_" + incoming().month + "_" + incoming().visibility;
+      allow delete: if member() && resource.data.uid == me();
+    }
+
+    match /kudos/{kudosId} {
+      allow read: if member();
+      allow create: if member() && incoming().giver == me() && incoming().owner != me()
+        && kudosId == incoming().owner + "_" + incoming().activity + "_" + me();
+      allow delete: if member() && resource.data.giver == me();
+    }
+
+    match /comments/{commentId} {
+      allow read: if member();
+      allow create: if member() && incoming().author == me()
+        && incoming().text is string && incoming().text.size() > 0 && incoming().text.size() <= 2000;
+      allow delete: if member() && (resource.data.author == me() || resource.data.owner == me());
+    }
+
+    match /follows/{followId} {
+      allow read: if member();
+      allow create: if member() && incoming().follower == me() && incoming().target != me()
+        && followId == me() + "_" + incoming().target;
+      allow delete: if member() && resource.data.follower == me();
+    }
+  }
+}

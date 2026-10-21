@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Läsa</title>
+  <link rel="icon" href="icon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="logo" href="#/">LÄSA</a>
+    <nav>
+      <a href="#/" data-nav="feed">Feed</a>
+      <a href="#/books" data-nav="books">Books</a>
+      <a href="#/club" data-nav="club">Club</a>
+    </nav>
+    <div class="topbar-right">
+      <span id="viewer"></span>
+      <button class="ghost icon-button" data-action="sync" title="Pull and sync Kindle and Apple Books">Sync</button>
+      <a class="button" href="#/record">Record</a>
+    </div>
+  </header>
+  <main id="app"><p class="empty">Loading…</p></main>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="app.mjs"></script>
+</body>
+</html>
