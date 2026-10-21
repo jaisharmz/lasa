@@ -8,6 +8,7 @@ const toastBox = document.getElementById("toast");
 const TIMER_KEY = "lasa-timer";
 const ui = { editing: null, feedLimit: 20, scope: null, access: null, stale: false, import: { stage: "idle", private: true } };
 const EXPORT_PAGE = "https://www.amazon.com/hz/privacy-central/data-requests/preview.html";
+const MAC_APP = "https://github.com/jaisharmz/lasa/releases/latest";
 let backend = null;
 let session = { status: "loading" };
 let data = null;
@@ -660,10 +661,12 @@ function settingsView() {
     </section>
     <section class="card pad stack">
       <h2>Kindle for Mac and Apple Books</h2>
-      <p>To keep sessions coming as you read, a small program on your Mac reads Kindle for Mac and Apple Books progress. In a copy of the Läsa repository, run:</p>
+      <p>To keep sessions coming as you read, Läsa for Mac sits in the menu bar and reads Kindle for Mac and Apple Books progress. It connects through this site as @${viewer}, syncs every 10 minutes, and keeps your sign-in in the Mac's Keychain.</p>
+      <div class="actions"><a class="button" href="${MAC_APP}" target="_blank" rel="noopener">Download Läsa for Mac</a></div>
+      <p class="muted">The app isn't notarized by Apple yet, so macOS blocks the first open. After that attempt, open System Settings > Privacy & Security and press Open Anyway.</p>
+      <p class="muted">Or, from a clone of the repository:</p>
       <pre class="code">node bin/lasa.mjs login
 node bin/lasa.mjs sync</pre>
-      <p class="muted">Login opens this site to connect the Mac to @${viewer}. The first sync records where every book stands, and reading after that becomes sessions.</p>
     </section>
     ${data.isAdmin ? accessSection() : ""}
     ${backend.demo ? "" : html`<section class="card pad stack"><h2>Account</h2><p class="muted">Signed in as ${data.email || ""}.</p><div class="actions"><button class="ghost" data-action="sign-out">Sign out</button></div></section>`}
@@ -673,7 +676,7 @@ node bin/lasa.mjs sync</pre>
 function connectView(query) {
   const port = query.get("port") || "";
   const state = query.get("state") || "";
-  if (!/^\d{4,5}$/.test(port) || !/^[a-f0-9]{32}$/.test(state)) return notFound("This link didn't come from lasa login on your Mac. Run node bin/lasa.mjs login again.");
+  if (!/^\d{4,5}$/.test(port) || !/^[a-f0-9]{32}$/.test(state)) return notFound("This link didn't come from Läsa on your Mac. Press Connect in Läsa for Mac again, or run lasa login again.");
   return html`<section class="card gate">
     <h1>Connect this Mac</h1>
     <p>The Läsa program on your Mac asked to sync as <b>@${viewer}</b>. It adds sessions from Kindle for Mac and Apple Books to your account.</p>
