@@ -40,3 +40,14 @@ test("the leaderboard ranks readers by time read", () => {
   const rows = leaderboard(readers, [session(0), session(1, { reader: "alan", seconds: 4000 })], 0, Infinity);
   assert.deepEqual(rows.map((row) => row.reader.handle), ["alan", "ada"]);
 });
+
+test("catch-up entries fill totals but set no streak, record or leaderboard place", () => {
+  const now = new Date(2026, 9, 20, 23, 0);
+  const catchUp = session(1, { id: "ab-walden-catchup", catchUp: true, estimated: true, seconds: 28800, pages: 300 });
+  const tonight = session(0);
+  assert.equal(streaks([tonight, catchUp], now).current, 1);
+  assert.equal(records([tonight, catchUp]).longest.id, "s0");
+  assert.equal(records([tonight, catchUp]).mostPages.id, "s0");
+  const [row] = leaderboard([{ handle: "ada" }], [tonight, catchUp], 0, Infinity);
+  assert.equal(row.seconds, 1800);
+});

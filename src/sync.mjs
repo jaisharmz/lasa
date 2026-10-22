@@ -4,6 +4,7 @@ import { readAppleBooks } from "./sources/apple-books.mjs";
 import { readKindleMac } from "./sources/kindle-mac.mjs";
 import { exportActivity, loadKindleExport, mergeSessions } from "./sources/kindle-export.mjs";
 import { advance, estimateSeconds, sessionName } from "./sessions.mjs";
+import { catchUpActivity, catchUpPlan, catchUpSources } from "./catch-up.mjs";
 import { ensureBook } from "./books.mjs";
 import { bookKey } from "../web/lib/books.mjs";
 
@@ -44,6 +45,29 @@ function readMinutesPerPage(mine) {
   return pages >= 50 ? seconds / 60 / pages : 1.6;
 }
 
+// Catch-up runs once over every book of a source, then only for books Läsa meets later.
+function catchUpItems(items, fresh, previous, config) {
+  const done = new Set(previous.caughtUp || []);
+  const wanted = catchUpSources(config);
+  const freshKeys = new Set(fresh.map((item) => `${item.source}:${item.sourceId}`));
+  return items.filter((item) => wanted.includes(item.source) && (!done.has(item.source) || freshKeys.has(`${item.source}:${item.sourceId}`)));
+}
+
+async function catchUpWrites({ sink, items, activities, config, dryRun, offline, minutesPerPage, now, log }) {
+  const written = [];
+  for (const item of items) {
+    const plan = catchUpPlan(item, activities);
+    if (!plan) continue;
+    const { book } = dryRun ? { book: { key: bookKey(item.title), title: item.title, pages: 300 } } : await ensureBook(sink, item, { offline });
+    const activity = catchUpActivity(item, plan, { book, reader: sink.handle, visibility: config.visibility, minutesPerPage, now });
+    if (!activity) continue;
+    written.push(activity);
+    const percent = plan.progress < 0.01 ? (plan.progress * 100).toFixed(1) : Math.round(plan.progress * 100);
+    log(`before Läsa: ${book.title}, ${percent}% on ${activity.end.slice(0, 10)}, ${activity.pages} ${activity.pages === 1 ? "page" : "pages"} (time estimated)`);
+  }
+  return written;
+}
+
 export async function sync({ sink, config = {}, statePath, tmpDir, dryRun = false, offline = false, now = new Date(), sources: list = SOURCES, deniedHint, log = console.log }) {
   const sources = readSources({ config, tmpDir, list, deniedHint });
   for (const source of sources) {
@@ -55,10 +79,11 @@ export async function sync({ sink, config = {}, statePath, tmpDir, dryRun = fals
   const highlights = sources.flatMap((source) => source.highlights);
 
   const previous = readState(statePath);
-  const { state, changes, baseline } = advance(previous, items, now);
+  const { state, changes, baseline, fresh } = advance(previous, items, now);
   if (baseline) log(`baseline recorded for ${baseline} books; reading from here on becomes activities`);
+  const catching = catchUpItems(items, fresh, previous, config);
 
-  const mine = changes.length ? await sink.mine() : [];
+  const mine = changes.length || catching.length ? await sink.mine() : [];
   const byId = new Map(mine.map((activity) => [activity.id, activity]));
   const minutesPerPage = readMinutesPerPage(mine);
   const written = [];
@@ -94,14 +119,29 @@ export async function sync({ sink, config = {}, statePath, tmpDir, dryRun = fals
     written.push(activity);
     log(`${change.extended ? "extended" : "new"}: ${activity.name}, ${book.title}, ${Math.round(seconds / 60)} min, ${pages} pages${estimated ? " (time estimated)" : ""}`);
   }
-  if (!changes.length && !baseline) log("no new reading");
+  written.push(...await catchUpWrites({ sink, items: catching, activities: [...mine, ...written], config, dryRun, offline, minutesPerPage, now, log }));
+  if (!written.length && !baseline) log("no new reading");
 
   if (!dryRun) {
     if (written.length) await sink.saveActivities(written);
+    const read = sources.filter((source) => source.available).map((source) => source.source);
+    const caughtUp = [...new Set([...(previous.caughtUp || []), ...catchUpSources(config).filter((source) => read.includes(source))])];
     fs.mkdirSync(path.dirname(statePath), { recursive: true });
-    fs.writeFileSync(statePath, JSON.stringify({ ...state, syncedAt: now.toISOString() }, null, 2) + "\n");
+    fs.writeFileSync(statePath, JSON.stringify({ ...state, caughtUp, syncedAt: now.toISOString() }, null, 2) + "\n");
   }
   return { changes, written, baseline, sources: sources.map(({ source, available, denied, items, error }) => ({ source, available, denied: Boolean(denied), books: items.length, error })) };
+}
+
+// The same catch-up on demand, over every book of the chosen sources: `lasa catch-up`, and `--kindle` to add Kindle.
+export async function catchUp({ sink, config = {}, tmpDir, include, dryRun = false, offline = false, now = new Date(), sources: list = SOURCES, log = console.log }) {
+  const wanted = include || catchUpSources(config);
+  const sources = readSources({ config, tmpDir, list });
+  const items = sources.flatMap((source) => source.items).filter((item) => !hidden(config, item.title) && wanted.includes(item.source));
+  const mine = await sink.mine();
+  const written = await catchUpWrites({ sink, items, activities: mine, config, dryRun, offline, minutesPerPage: readMinutesPerPage(mine), now, log });
+  if (!dryRun && written.length) await sink.saveActivities(written);
+  log(`${written.length} catch-up ${written.length === 1 ? "activity" : "activities"} from ${wanted.join(" and ")}${dryRun ? " (dry run, nothing written)" : ""}`);
+  return { written };
 }
 
 export async function importKindleExport({ sink, config = {}, input, tmpDir, dryRun = false, offline = false, log = console.log }) {

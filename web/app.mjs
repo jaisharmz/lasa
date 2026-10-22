@@ -1,5 +1,5 @@
 import { clock, day, duration, escape, hours, html, hue, initials, longDate, pace, percent, raw, when } from "./lib/format.mjs";
-import { achievements, bookProgress, daily, dayKey, leaderboard, minutesPerPage, records, startOfMonth, startOfWeek, streaks, totals, weekly } from "./lib/stats.mjs";
+import { achievements, bookProgress, daily, dayKey, leaderboard, minutesPerPage, records, sessionsOnly, startOfMonth, startOfWeek, streaks, totals, weekly } from "./lib/stats.mjs";
 import { createLocalBackend } from "./lib/backend-local.mjs";
 import { compareImport, exportFiles, planImport, readExport, summarize } from "./lib/kindle-export.mjs";
 
@@ -232,7 +232,7 @@ function challengeCard(now) {
   const rows = circle()
     .map((person) => {
       const goal = person.goal?.month?.hours || 20;
-      const sum = totals(activitiesOf(person.handle).filter((activity) => Date.parse(activity.start) >= from.getTime() && Date.parse(activity.start) < to.getTime()));
+      const sum = totals(sessionsOnly(activitiesOf(person.handle)).filter((activity) => Date.parse(activity.start) >= from.getTime() && Date.parse(activity.start) < to.getTime()));
       return { person, goal, sum, share: Math.min(1, sum.seconds / 3600 / goal) };
     })
     .sort((a, b) => b.share - a.share);
@@ -328,7 +328,9 @@ function activityView(owner, id) {
         <div class="info"><p class="book-line"><a href="#/b/${entry.key}">${entry.title}</a>${entry.author ? ` · ${entry.author}` : ""}</p>${statRow(activity, true)}</div>
       </div>
       ${track(activity, true)}
-      ${activity.estimated ? html`<small>~ The time is estimated from pages read, because the app reported progress but not when reading began.</small>` : ""}
+      ${activity.catchUp
+        ? html`<small>~ Read before Läsa was connected. The app only knew how far the book had got, so this is dated when the book was last opened and the time is estimated from pages.</small>`
+        : activity.estimated ? html`<small>~ The time is estimated from pages read, because the app reported progress but not when reading began.</small>` : ""}
       ${(activity.highlights || []).map((highlight) => html`<blockquote class="highlight">${highlight.text}${highlight.note ? html`<br><small>${highlight.note}</small>` : ""}</blockquote>`)}
       ${social(activity)}
     </section>

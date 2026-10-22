@@ -69,8 +69,14 @@ export function daily(activities) {
   return days;
 }
 
+// Catch-up entries are estimates of reading done before Läsa, not sittings, so they fill totals and charts but never
+// set a streak, a record or a place on a leaderboard.
+export function sessionsOnly(activities) {
+  return activities.filter((activity) => !activity.catchUp);
+}
+
 export function streaks(activities, now = new Date()) {
-  const days = new Set(activities.map((activity) => dayKey(activity.start)));
+  const days = new Set(sessionsOnly(activities).map((activity) => dayKey(activity.start)));
   const cursor = startOfDay(now);
   if (!days.has(dayKey(cursor))) cursor.setDate(cursor.getDate() - 1);
   let current = 0;
@@ -103,7 +109,8 @@ function maxBy(list, score) {
   return best;
 }
 
-export function records(activities) {
+export function records(all) {
+  const activities = sessionsOnly(all);
   const timed = activities.filter((activity) => !activity.estimated && activity.pages >= 10 && activity.seconds >= 600);
   let bestDay = null;
   for (const [day, value] of daily(activities)) {
@@ -158,8 +165,8 @@ export function achievements(activities, now = new Date()) {
     longestStreak: streaks(activities, now).longest,
     bestDayPages: best.bestDay?.pages || 0,
     longestSession: best.longest?.seconds || 0,
-    nightOwl: activities.some((activity) => new Date(activity.end).getHours() < 4 && activity.seconds >= 600),
-    earlyBird: activities.some((activity) => {
+    nightOwl: sessionsOnly(activities).some((activity) => new Date(activity.end).getHours() < 4 && activity.seconds >= 600),
+    earlyBird: sessionsOnly(activities).some((activity) => {
       const hour = new Date(activity.start).getHours();
       return hour >= 4 && hour < 7;
     }),
@@ -169,7 +176,7 @@ export function achievements(activities, now = new Date()) {
 
 export function leaderboard(readers, activities, from, to) {
   return readers
-    .map((reader) => ({ reader, ...totals(between(activities.filter((activity) => activity.reader === reader.handle), from, to)) }))
+    .map((reader) => ({ reader, ...totals(between(sessionsOnly(activities).filter((activity) => activity.reader === reader.handle), from, to)) }))
     .sort((a, b) => b.seconds - a.seconds || b.pages - a.pages);
 }
 

@@ -21,6 +21,7 @@ export function advance(previous, items, now = new Date()) {
   const nowMs = now.getTime();
   const nowIso = now.toISOString();
   const changes = [];
+  const fresh = [];
   let baseline = 0;
 
   for (const item of items) {
@@ -29,6 +30,7 @@ export function advance(previous, items, now = new Date()) {
     state.books[key] = { progress: item.progress, readAt: item.readAt, seenAt: nowIso, title: item.title };
     if (!before) {
       baseline++;
+      fresh.push(item);
       continue;
     }
     if (item.progress - before.progress < MIN_PROGRESS) continue;
@@ -68,7 +70,7 @@ export function advance(previous, items, now = new Date()) {
     if (nowMs - time(open.end) > GAP_MINUTES * MINUTE) delete state.open[key];
   }
 
-  return { state, changes, baseline };
+  return { state, changes, baseline, fresh };
 }
 
 export function estimateSeconds({ start, end, pages, minutesPerPage = 1.6 }) {

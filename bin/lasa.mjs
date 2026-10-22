@@ -5,8 +5,9 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
-import { importKindleExport, readState, sync } from "../src/sync.mjs";
+import { catchUp, importKindleExport, readState, sync } from "../src/sync.mjs";
 import { logActivity } from "../src/manual.mjs";
+import { catchUpSources } from "../src/catch-up.mjs";
 import { serve } from "../src/server.mjs";
 import { buildDemo } from "../src/demo.mjs";
 import { FirebaseClient, endpoints } from "../src/firebase.mjs";
@@ -27,6 +28,8 @@ const USAGE = `Läsa, Strava for reading
   lasa login                              connect this Mac to your Läsa account (opens the site)
   lasa logout | whoami
   lasa sync [--dry-run] [--offline]       new reading in Kindle for Mac and Apple Books becomes sessions
+  lasa catch-up [--dry-run] [--kindle]    one estimated activity per started book for reading done before Läsa
+                                          (sync does this once by itself for Apple Books; --kindle adds Kindle)
   lasa import <kindle-export.zip|dir> [--dry-run]
                                           backfill real Kindle sessions from Amazon's data export
   lasa log "<title>" --minutes 30 [--pages 20] [--author "..."] [--at "2026-10-20 21:00"]
@@ -49,6 +52,7 @@ const { values: flags, positionals } = parseArgs({
     "dry-run": { type: "boolean" },
     offline: { type: "boolean" },
     emulators: { type: "boolean" },
+    kindle: { type: "boolean" },
     "no-open": { type: "boolean" },
     port: { type: "string" },
     minutes: { type: "string" },
@@ -157,6 +161,13 @@ async function main() {
   if (command === "sync") {
     const sink = flags["dry-run"] ? preview() : signedIn().sink;
     await sync({ sink, config: config(), statePath: STATE, tmpDir: TMP, dryRun: flags["dry-run"], offline: flags.offline, log: stamp });
+    return;
+  }
+
+  if (command === "catch-up") {
+    const settings = config();
+    const include = flags.kindle ? [...new Set([...catchUpSources(settings), "kindle"])] : undefined;
+    await catchUp({ sink: signedIn().sink, config: settings, tmpDir: TMP, include, dryRun: flags["dry-run"], offline: flags.offline, log: stamp });
     return;
   }
 

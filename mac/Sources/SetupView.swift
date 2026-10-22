@@ -80,12 +80,12 @@ struct SetupView: View {
 
             Step(number: 3, title: "Record where your books stand", done: recorded, open: connected && syncer.accessReady) {
                 if let count = syncer.baselineRecorded {
-                    Text("Recorded \(count) \(count == 1 ? "book" : "books"). Reading from now on becomes sessions, and Läsa syncs every 10 minutes and when your Mac wakes.")
+                    Text("Recorded \(count) \(count == 1 ? "book" : "books"). Books you had started in Apple Books each get one estimated entry for the reading you'd already done. Reading from now on becomes sessions, and Läsa syncs every 10 minutes and when your Mac wakes.")
                         .fixedSize(horizontal: false, vertical: true)
                 } else if syncer.tracked > 0 {
                     Text("Läsa already knows where \(syncer.tracked) books stand. Reading from now on becomes sessions.")
                 } else {
-                    Text("The first sync notes how far you are in every book, so books you already read don't flood your feed. Reading after this becomes sessions.")
+                    Text("The first sync notes how far you are in every book and adds one estimated entry per started Apple Books book, so your past reading shows without flooding your feed. Reading after this becomes sessions.")
                         .fixedSize(horizontal: false, vertical: true)
                     Picker("New sessions are visible to", selection: Binding(get: { syncer.visibility }, set: { syncer.setVisibility($0) })) {
                         Text("Everyone").tag("everyone")

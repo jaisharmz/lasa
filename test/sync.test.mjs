@@ -40,12 +40,13 @@ test("sync turns an Apple Books progress change into an activity file", async ()
   fakeAppleBooks(books, 0.1, start - 86400000);
   const first = await sync({ ...options, now: new Date(start) });
   assert.equal(first.baseline, 1);
-  assert.equal(first.written.length, 0);
+  assert.equal(first.written.length, 1);
+  assert.equal(first.written[0].catchUp, true);
 
   fakeAppleBooks(books, 0.2, start + 2 * 60000);
   const second = await sync({ ...options, now: new Date(start + 32 * 60000) });
   assert.equal(second.written.length, 1);
-  const [activity] = store.all("activities/ada");
+  const [activity] = store.all("activities/ada").filter((saved) => !saved.catchUp);
   assert.equal(activity.book, "walden");
   assert.equal(activity.pages, 30);
   assert.equal(activity.seconds, 30 * 60);

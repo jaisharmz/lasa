@@ -65,7 +65,7 @@ test("sync takes the account on stdin, records a baseline, then turns reading in
   assert.equal(first.status, 0);
   const firstDone = first.events.find((event) => event.event === "done");
   assert.equal(firstDone.baseline, 1);
-  assert.equal(firstDone.written, 0);
+  assert.equal(firstDone.written, 1);
   assert.equal(firstDone.tracked, 1);
   assert.equal(firstDone.refreshToken, undefined);
   assert.ok(first.events.some((event) => event.event === "log" && /baseline recorded/.test(event.line)));
@@ -75,5 +75,5 @@ test("sync takes the account on stdin, records a baseline, then turns reading in
   assert.equal(second.written, 1);
   assert.equal(second.sessions[0].book, "walden");
   const saved = fs.readdirSync(path.join(root, "store", "activities", "ada"));
-  assert.equal(saved.length, 1);
+  assert.equal(saved.length, 2);
 });

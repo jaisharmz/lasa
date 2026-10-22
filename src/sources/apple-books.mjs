@@ -14,11 +14,12 @@ export function readAppleBooks({ tmpDir, documents = APPLE_BOOKS_DIR }) {
   if (!libraryFile) return { source: "apple-books", available: false, items: [], highlights: [] };
 
   const library = openCopy(libraryFile, path.join(tmpDir, "apple-books"));
+  const columns = new Set(library.prepare("pragma table_info(ZBKLIBRARYASSET)").all().map((column) => column.name));
   const rows = library.prepare(`
     select ZASSETID as id, ZTITLE as title, ZAUTHOR as author, ZREADINGPROGRESS as progress,
       ZLASTOPENDATE as opened, ZLASTENGAGEDDATE as engaged,
       ZISFINISHED as finished, ZDATEFINISHED as finishedAt, ZISSAMPLE as sample,
-      ZISSTOREAUDIOBOOK as audiobook
+      ZISSTOREAUDIOBOOK as audiobook, ${columns.has("ZCREATIONDATE") ? "ZCREATIONDATE" : "null"} as added
     from ZBKLIBRARYASSET
     where ZTITLE is not null and ZASSETID is not null`).all();
   library.close();
@@ -34,6 +35,7 @@ export function readAppleBooks({ tmpDir, documents = APPLE_BOOKS_DIR }) {
       author: row.author ? row.author.replace(/;\s*$/, "") : null,
       progress: Math.max(0, Math.min(1, row.progress || 0)),
       openedAt,
+      addedAt: fromCoreData(row.added),
       readAt: engagedLater ? engagedAt : null,
       finished: Boolean(row.finished),
       finishedAt: fromCoreData(row.finishedAt),

@@ -15,7 +15,7 @@ node bin/lasa.mjs login
 node bin/lasa.mjs sync
 ```
 
-`login` opens the site and asks you to connect the Mac. The first `sync` records where every book stands, and reading after that becomes sessions. Paper books go through the Record button, which works on a phone too.
+`login` opens the site and asks you to connect the Mac. The first `sync` records where every book stands and adds one estimated "Read before Läsa" entry for each Apple Books book you have started, dated when you last opened it. Reading after that becomes sessions. Paper books go through the Record button, which works on a phone too.
 
 ## Where sessions come from
 
@@ -45,7 +45,7 @@ The first time it opens, a window walks through three steps:
 
 1. **Connect.** The site opens in your browser. Sign in and press Connect. The app keeps the sign-in in your login Keychain.
 2. **Allow access.** Kindle and Apple Books keep their data in folders macOS guards, so the first read makes macOS ask whether Läsa may access data from other apps. Choose Allow.
-3. **Record where your books stand.** The first sync notes how far you are in every book, so books you finished long ago don't fill your feed. Here you also choose whether new sessions are visible to everyone or only you.
+3. **Record where your books stand.** The first sync notes how far you are in every book. Each started Apple Books book gets one estimated "Read before Läsa" entry, dated when you last opened it, rather than a session for every page you ever read. Here you also choose whether new sessions are visible to everyone or only you.
 
 After that it syncs every 10 minutes, when the Mac wakes, and when it starts. The menu shows the last sync and what it found, each app's book count, Sync Now, Open Läsa, who sees new sessions, Open at Login, the sync log, and Disconnect.
 
@@ -114,7 +114,7 @@ node bin/lasa.mjs agent install
 - Each session can be "Everyone" or "Only me" (Edit on the session). Private sessions are readable only by their reader.
 - The Import page saves only sessions and book titles, and new sessions start as "Only me". Books are shared records, so a private import still adds its titles to the shared list of books, without saying who read them.
 - Nobody can write a session, kudos, comment, or follow as someone else.
-- `.lasa/config.json` on the Mac takes `"hide": ["word", ...]`. A book whose title contains any of those words never becomes a session, like Strava's privacy zones. `"visibility": "private"` makes synced sessions private by default, and highlights stay off until `"shareHighlights": true`.
+- `.lasa/config.json` on the Mac takes `"hide": ["word", ...]`. A book whose title contains any of those words never becomes a session, like Strava's privacy zones. `"visibility": "private"` makes synced sessions private by default, and highlights stay off until `"shareHighlights": true`. `"catchUp": ["apple-books", "kindle"]` adds Kindle to the one-time "Read before Läsa" entries (Kindle is left out by default because its data export holds the real sessions), and `[]` turns them off. `lasa catch-up [--kindle]` adds them on demand for a Mac that synced before catch-up existed.
 - The CLI stores its sign-in in `.lasa/credentials.json` (readable only by you), and `lasa logout` removes it. Läsa for Mac keeps it in the login Keychain and hands it to the sync engine on standard input for each run.
 
 Admins switch between open sign-up and invite-only in Settings > Access, or from a connected Mac:
